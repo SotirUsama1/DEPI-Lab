@@ -1,0 +1,25 @@
+---
+docker_apt_keyring_directory: /etc/apt/keyrings
+docker_apt_key_path: /etc/apt/keyrings/docker.asc
+docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
+docker_apt_repository_url: https://download.docker.com/linux/ubuntu
+docker_apt_repository_component: stable
+docker_apt_arch: >-
+  {{ {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(ansible_architecture, ansible_architecture) }}
+
+docker_prerequisite_packages:
+  - ca-certificates
+  - curl
+  - python3-debian
+
+docker_packages:
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-ce
+  - docker-ce-cli
+  - docker-compose-plugin
+
+deployment_directory: /opt/depi-app
+deployment_owner: ubuntu
+deployment_group: ubuntu
+deployment_directory_mode: "0755"
