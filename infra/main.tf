@@ -34,7 +34,7 @@ resource "aws_security_group" "example" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["${trimspace(data.http.my_public_ip.response_body)}/32"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
