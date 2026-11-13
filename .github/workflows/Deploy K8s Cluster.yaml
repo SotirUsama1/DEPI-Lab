@@ -1,0 +1,148 @@
+name: Deploy K8s Cluster
+
+on:
+  push:
+    branches:
+      - k8s-cluster
+  workflow_dispatch:
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy infrastructure
+    runs-on: ubuntu-latest
+    env:
+      AWS_PROFILE: aws-sotir
+      AWS_REGION: eu-west-3
+      TF_VAR_aws_profile: aws-sotir
+    steps:
+      - name: Checkout k8s-cluster branch
+        uses: actions/checkout@v4
+        with:
+          ref: k8s-cluster
+
+      - name: Configure AWS profile
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::Set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY repository secrets."
+            exit 1
+          fi
+
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID" --profile "$AWS_PROFILE"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile "$AWS_PROFILE"
+          aws configure set region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity --profile "$AWS_PROFILE"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Deploy infrastructure
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+        working-directory: infra
+
+      - name: Set up Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: python -m pip install ansible
+
+      - name: Configure EC2 SSH key
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$EC2_SSH_PRIVATE_KEY" ]; then
+            echo "::error::Set the EC2_SSH_PRIVATE_KEY repository secret to the private key for the aws-default EC2 key pair."
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          # GitHub secrets may contain literal \n escapes or Windows CRLFs.
+          PRIVATE_KEY="$EC2_SSH_PRIVATE_KEY"
+          PRIVATE_KEY="${PRIVATE_KEY//$'\r'/}"
+          PRIVATE_KEY="${PRIVATE_KEY//\\n/$'\n'}"
+          printf '%s\n' "$PRIVATE_KEY" > "$HOME/.ssh/aws-default.pem"
+          chmod 600 "$HOME/.ssh/aws-default.pem"
+          if ! ssh-keygen -y -f "$HOME/.ssh/aws-default.pem" >/dev/null 2>&1; then
+            echo "::error::EC2_SSH_PRIVATE_KEY is not a valid private key. Store the complete PEM/OpenSSH private key in the repository secret, preserving its line breaks."
+            exit 1
+          fi
+
+      - name: Add infrastructure hosts to known_hosts
+        run: |
+          BASTION_IP="$(terraform -chdir=../infra output -raw bastian_server_public_ip)"
+          BASTION_ID="$(terraform -chdir=../infra output -raw bastian_server_id)"
+          MASTER_IP="$(terraform -chdir=../infra output -raw master_node_private_ip)"
+          MASTER_ID="$(terraform -chdir=../infra output -raw master_node_id)"
+          WORKER_1_IP="$(terraform -chdir=../infra output -raw worker_node_1_private_ip)"
+          WORKER_1_ID="$(terraform -chdir=../infra output -raw worker_node_1_id)"
+          WORKER_2_IP="$(terraform -chdir=../infra output -raw worker_node_2_private_ip)"
+          WORKER_2_ID="$(terraform -chdir=../infra output -raw worker_node_2_id)"
+          KNOWN_HOSTS="$HOME/.ssh/known_hosts"
+
+          echo "Waiting for EC2 instance status checks to pass..."
+          aws ec2 wait instance-status-ok \
+            --instance-ids "$BASTION_ID" "$MASTER_ID" "$WORKER_1_ID" "$WORKER_2_ID" \
+            --profile "$AWS_PROFILE" \
+            --region "$AWS_REGION"
+
+          for attempt in $(seq 1 12); do
+            BASTION_KEYS="$(ssh-keyscan -T 5 -H "$BASTION_IP" 2>/dev/null || true)"
+            if [ -n "$BASTION_KEYS" ]; then
+              printf '%s\n' "$BASTION_KEYS" >> "$KNOWN_HOSTS"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::Could not retrieve the bastion SSH host key."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          port=2222
+          for host in "$MASTER_IP" "$WORKER_1_IP" "$WORKER_2_IP"; do
+            ssh -F ./ssh.config \
+              -o BatchMode=yes \
+              -o ExitOnForwardFailure=yes \
+              -o ServerAliveInterval=5 \
+              -o ServerAliveCountMax=3 \
+              -N -L "127.0.0.1:${port}:${host}:22" bastion &
+            TUNNEL_PID=$!
+
+            HOST_KEYS=""
+            for attempt in $(seq 1 12); do
+              if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+                echo "::error::SSH tunnel to $host stopped before its host key could be read. Check the bastion SSH connection and node security group."
+                wait "$TUNNEL_PID" || true
+                exit 1
+              fi
+              HOST_KEYS="$(ssh-keyscan -T 5 -p "$port" 127.0.0.1 2>/dev/null | sed -E "s/^(\\[127\\.0\\.0\\.1\\]:[0-9]+|127\\.0\\.0\\.1) /$host /" || true)"
+              if [ -n "$HOST_KEYS" ]; then
+                printf '%s\n' "$HOST_KEYS" >> "$KNOWN_HOSTS"
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                kill "$TUNNEL_PID" 2>/dev/null || true
+                wait "$TUNNEL_PID" 2>/dev/null || true
+                echo "::error::Could not retrieve the SSH host key for $host ($host:22) through the bastion after 12 attempts. Verify sshd is running and the node security group allows port 22 from the bastion."
+                exit 1
+              fi
+              sleep 5
+            done
+
+            kill "$TUNNEL_PID" 2>/dev/null || true
+            wait "$TUNNEL_PID" 2>/dev/null || true
+            port=$((port + 1))
+          done
+        working-directory: ansible
+
+      - name: Configure Kubernetes nodes
+        run: ansible-playbook setup-kubernetes.yml
+        working-directory: ansible
