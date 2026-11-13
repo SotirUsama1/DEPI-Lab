@@ -45,3 +45,65 @@ jobs:
           terraform init -input=false
           terraform apply -input=false -auto-approve
         working-directory: infra
+
+      - name: Set up Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: python -m pip install ansible
+
+      - name: Configure EC2 SSH key
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$EC2_SSH_PRIVATE_KEY" ]; then
+            echo "::error::Set the EC2_SSH_PRIVATE_KEY repository secret to the private key for the aws-default EC2 key pair."
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" > "$HOME/.ssh/aws-default.pem"
+          chmod 600 "$HOME/.ssh/aws-default.pem"
+
+      - name: Add infrastructure hosts to known_hosts
+        run: |
+          BASTION_IP="$(terraform -chdir=infra output -raw bastian_server_public_ip)"
+          MASTER_IP="$(terraform -chdir=infra output -raw master_node_private_ip)"
+          WORKER_1_IP="$(terraform -chdir=infra output -raw worker_node_1_private_ip)"
+          WORKER_2_IP="$(terraform -chdir=infra output -raw worker_node_2_private_ip)"
+          KNOWN_HOSTS="$HOME/.ssh/known_hosts"
+
+          for attempt in $(seq 1 12); do
+            BASTION_KEYS="$(ssh-keyscan -T 5 -H "$BASTION_IP" 2>/dev/null || true)"
+            if [ -n "$BASTION_KEYS" ]; then
+              printf '%s\n' "$BASTION_KEYS" >> "$KNOWN_HOSTS"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::Could not retrieve the bastion SSH host key."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          for host in "$MASTER_IP" "$WORKER_1_IP" "$WORKER_2_IP"; do
+            for attempt in $(seq 1 12); do
+              HOST_KEYS="$(ssh -F ./ssh.config bastion "ssh-keyscan -T 5 -H '$host' 2>/dev/null" 2>/dev/null || true)"
+              if [ -n "$HOST_KEYS" ]; then
+                printf '%s\n' "$HOST_KEYS" >> "$KNOWN_HOSTS"
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                echo "::error::Could not retrieve the SSH host key for $host through the bastion."
+                exit 1
+              fi
+              sleep 5
+            done
+          done
+        working-directory: ansible
+
+      - name: Configure Kubernetes nodes
+        run: ansible-playbook setup-kubernetes.yml
+        working-directory: ansible

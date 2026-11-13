@@ -5,11 +5,16 @@ secrets in **Settings → Secrets and variables → Actions**:
 
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
+- `EC2_SSH_PRIVATE_KEY`
 
 Use the access key pair for the AWS IAM user represented by the local
 `aws-sotir` profile. The workflow creates that named profile on its temporary
 runner, sets its region to `eu-west-3`, and verifies the identity with AWS STS.
-Terraform steps can use the same profile through `TF_VAR_aws_profile`.
+Set `EC2_SSH_PRIVATE_KEY` to the private key corresponding to the `aws-default`
+EC2 key pair configured in Terraform. The workflow uses it to reach the bastion
+and then runs Ansible against the private Kubernetes nodes. It retrieves the
+SSH host keys for the deployed hosts and adds them to the runner's `known_hosts`
+before running the playbook.
 
 Do not commit AWS credentials to the repository. The current workflow verifies
-authentication only; it does not yet run Terraform or deploy the cluster.
+authentication, applies Terraform, and configures Kubernetes nodes with Ansible.
