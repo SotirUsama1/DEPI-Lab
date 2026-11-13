@@ -69,10 +69,10 @@ jobs:
 
       - name: Add infrastructure hosts to known_hosts
         run: |
-          BASTION_IP="$(terraform -chdir=infra output -raw bastian_server_public_ip)"
-          MASTER_IP="$(terraform -chdir=infra output -raw master_node_private_ip)"
-          WORKER_1_IP="$(terraform -chdir=infra output -raw worker_node_1_private_ip)"
-          WORKER_2_IP="$(terraform -chdir=infra output -raw worker_node_2_private_ip)"
+          BASTION_IP="$(terraform -chdir=../infra output -raw bastian_server_public_ip)"
+          MASTER_IP="$(terraform -chdir=../infra output -raw master_node_private_ip)"
+          WORKER_1_IP="$(terraform -chdir=../infra output -raw worker_node_1_private_ip)"
+          WORKER_2_IP="$(terraform -chdir=../infra output -raw worker_node_2_private_ip)"
           KNOWN_HOSTS="$HOME/.ssh/known_hosts"
 
           for attempt in $(seq 1 12); do
