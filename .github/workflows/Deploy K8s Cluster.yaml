@@ -70,10 +70,20 @@ jobs:
       - name: Add infrastructure hosts to known_hosts
         run: |
           BASTION_IP="$(terraform -chdir=../infra output -raw bastian_server_public_ip)"
+          BASTION_ID="$(terraform -chdir=../infra output -raw bastian_server_id)"
           MASTER_IP="$(terraform -chdir=../infra output -raw master_node_private_ip)"
+          MASTER_ID="$(terraform -chdir=../infra output -raw master_node_id)"
           WORKER_1_IP="$(terraform -chdir=../infra output -raw worker_node_1_private_ip)"
+          WORKER_1_ID="$(terraform -chdir=../infra output -raw worker_node_1_id)"
           WORKER_2_IP="$(terraform -chdir=../infra output -raw worker_node_2_private_ip)"
+          WORKER_2_ID="$(terraform -chdir=../infra output -raw worker_node_2_id)"
           KNOWN_HOSTS="$HOME/.ssh/known_hosts"
+
+          echo "Waiting for EC2 instance status checks to pass..."
+          aws ec2 wait instance-status-ok \
+            --instance-ids "$BASTION_ID" "$MASTER_ID" "$WORKER_1_ID" "$WORKER_2_ID" \
+            --profile "$AWS_PROFILE" \
+            --region "$AWS_REGION"
 
           for attempt in $(seq 1 12); do
             BASTION_KEYS="$(ssh-keyscan -T 5 -H "$BASTION_IP" 2>/dev/null || true)"
@@ -88,19 +98,40 @@ jobs:
             sleep 5
           done
 
+          port=2222
           for host in "$MASTER_IP" "$WORKER_1_IP" "$WORKER_2_IP"; do
+            ssh -F ./ssh.config \
+              -o BatchMode=yes \
+              -o ExitOnForwardFailure=yes \
+              -o ServerAliveInterval=5 \
+              -o ServerAliveCountMax=3 \
+              -N -L "127.0.0.1:${port}:${host}:22" bastion &
+            TUNNEL_PID=$!
+
+            HOST_KEYS=""
             for attempt in $(seq 1 12); do
-              HOST_KEYS="$(ssh -F ./ssh.config bastion "ssh-keyscan -T 5 -H '$host' 2>/dev/null" 2>/dev/null || true)"
+              if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+                echo "::error::SSH tunnel to $host stopped before its host key could be read. Check the bastion SSH connection and node security group."
+                wait "$TUNNEL_PID" || true
+                exit 1
+              fi
+              HOST_KEYS="$(ssh-keyscan -T 5 -p "$port" 127.0.0.1 2>/dev/null | sed -E "s/^(\\[127\\.0\\.0\\.1\\]:[0-9]+|127\\.0\\.0\\.1) /$host /" || true)"
               if [ -n "$HOST_KEYS" ]; then
                 printf '%s\n' "$HOST_KEYS" >> "$KNOWN_HOSTS"
                 break
               fi
               if [ "$attempt" -eq 12 ]; then
-                echo "::error::Could not retrieve the SSH host key for $host through the bastion."
+                kill "$TUNNEL_PID" 2>/dev/null || true
+                wait "$TUNNEL_PID" 2>/dev/null || true
+                echo "::error::Could not retrieve the SSH host key for $host ($host:22) through the bastion after 12 attempts. Verify sshd is running and the node security group allows port 22 from the bastion."
                 exit 1
               fi
               sleep 5
             done
+
+            kill "$TUNNEL_PID" 2>/dev/null || true
+            wait "$TUNNEL_PID" 2>/dev/null || true
+            port=$((port + 1))
           done
         working-directory: ansible
 
