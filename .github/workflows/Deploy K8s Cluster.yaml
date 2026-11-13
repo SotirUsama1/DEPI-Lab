@@ -1,0 +1,33 @@
+name: Deploy K8s Cluster
+
+on:
+  push:
+    branches:
+      - k8s-cluster
+  workflow_dispatch:
+
+jobs:
+  authenticate:
+    name: Authenticate to AWS
+    runs-on: ubuntu-latest
+    env:
+      AWS_PROFILE: aws-sotir
+      AWS_REGION: eu-west-3
+      TF_VAR_aws_profile: aws-sotir
+    steps:
+      - name: Configure AWS profile
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::Set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY repository secrets."
+            exit 1
+          fi
+
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID" --profile "$AWS_PROFILE"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile "$AWS_PROFILE"
+          aws configure set region "$AWS_REGION" --profile "$AWS_PROFILE"
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity --profile "$AWS_PROFILE"
