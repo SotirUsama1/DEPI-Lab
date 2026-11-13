@@ -64,8 +64,16 @@ jobs:
           fi
 
           install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" > "$HOME/.ssh/aws-default.pem"
+          # GitHub secrets may contain literal \n escapes or Windows CRLFs.
+          PRIVATE_KEY="$EC2_SSH_PRIVATE_KEY"
+          PRIVATE_KEY="${PRIVATE_KEY//$'\r'/}"
+          PRIVATE_KEY="${PRIVATE_KEY//\\n/$'\n'}"
+          printf '%s\n' "$PRIVATE_KEY" > "$HOME/.ssh/aws-default.pem"
           chmod 600 "$HOME/.ssh/aws-default.pem"
+          if ! ssh-keygen -y -f "$HOME/.ssh/aws-default.pem" >/dev/null 2>&1; then
+            echo "::error::EC2_SSH_PRIVATE_KEY is not a valid private key. Store the complete PEM/OpenSSH private key in the repository secret, preserving its line breaks."
+            exit 1
+          fi
 
       - name: Add infrastructure hosts to known_hosts
         run: |
