@@ -1,5 +1,5 @@
 module "vpc" {
-  source  = "../../../../Grad/tf/AWS-Terraform-modules-registry-for-resources-provisioning/modules/VPC"
+  source  = "./modules/VPC"
   context = local.context
 
   public_subnet_count       = var.vpc_public_subnet_count

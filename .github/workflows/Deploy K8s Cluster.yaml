@@ -7,14 +7,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  authenticate:
-    name: Authenticate to AWS
+  deploy-infrastructure:
+    name: Deploy infrastructure
     runs-on: ubuntu-latest
     env:
       AWS_PROFILE: aws-sotir
       AWS_REGION: eu-west-3
       TF_VAR_aws_profile: aws-sotir
     steps:
+      - name: Checkout k8s-cluster branch
+        uses: actions/checkout@v4
+        with:
+          ref: k8s-cluster
+
       - name: Configure AWS profile
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -31,3 +36,12 @@ jobs:
 
       - name: Verify AWS identity
         run: aws sts get-caller-identity --profile "$AWS_PROFILE"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Deploy infrastructure
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+        working-directory: infra
