@@ -1,0 +1,50 @@
+services:
+  mongodb:
+    build:
+      context: ./database
+    image: library-mongodb:8.0.38-slim
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - library-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    image: library-backend:1.0.0
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/library
+      JWT_SECRET: ${JWT_SECRET:-local-development-change-me}
+      FRONTEND_ORIGIN: http://localhost:8080
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    networks:
+      - library-network
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5000/api
+    image: library-frontend:1.0.0
+    depends_on:
+      - backend
+    ports:
+      - "8080:8080"
+    networks:
+      - library-network
+
+volumes:
+  mongo-data:
+
+networks:
+  library-network:
