@@ -1,6 +1,6 @@
 # Chapter & Co. Library
 
-Three layers: a React/Vite frontend, a Flask API, and MongoDB. The application supports registration, login/logout, catalogue search/category filters, borrowing and returning books, and purchase records. Buy only records the purchase; it does not collect or process payment.
+Three layers: a React/Vite frontend, a Flask API, and MongoDB. The frontend is a multi-page library hub with separate login and registration screens, a reader home page, catalog, personal shelf, purchase history, and favorites. The application supports catalogue search/category filters, borrowing and returning books, and purchase records. Buy only records the purchase; it does not collect or process payment.
 
 ## Build the three Docker images
 
