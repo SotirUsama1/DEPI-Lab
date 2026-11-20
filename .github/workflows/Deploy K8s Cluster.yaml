@@ -46,6 +46,16 @@ jobs:
           terraform apply -input=false -auto-approve
         working-directory: infra
 
+      - name: Upload Ansible connection files
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-connection-files
+          path: |
+            ansible/inventory.ini
+            ansible/ssh.config
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Set up Ansible
         uses: actions/setup-python@v5
         with:
