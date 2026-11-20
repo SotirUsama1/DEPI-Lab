@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: library-backend
+  namespace: library-app
 spec:
   replicas: 1
   selector:
@@ -14,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: library-backend:1.0.0
+          image: sotirusama/library-backend:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -21,7 +21,7 @@ resource "aws_security_group" "example1" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["${trimspace(data.http.my_public_ip.response_body)}/32"]
+    cidr_blocks = ["${trimspace(data.http.my_public_ip.response_body)}/32", "0.0.0.0/0"]
   }
 
   egress {
@@ -62,6 +62,13 @@ resource "aws_security_group" "example" {
     to_port   = 8472
     protocol  = "udp"
     self      = true
+  }
+
+  ingress {
+    from_port = 30080
+    to_port = 30080
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
