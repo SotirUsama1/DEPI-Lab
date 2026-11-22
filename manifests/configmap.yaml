@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: library-config
-  namespace: library-app
-data:
-  MONGO_URI: mongodb://mongodb:27017/library
-  FRONTEND_ORIGIN: "*"
-  APP_ENV: production
