@@ -17,7 +17,7 @@ images:
     pullPolicy: IfNotPresent
 
 frontend:
-  replicaCount: 2
+  replicaCount: 1
   containerPort: 8080
   service:
     type: NodePort
@@ -25,7 +25,7 @@ frontend:
     nodePort: 30080
 
 backend:
-  replicaCount: 2
+  replicaCount: 1
   containerPort: 5000
   service:
     port: 5000
