@@ -21,12 +21,12 @@ output "bastian_server_id" {
   description = "The created instance id"
   value       = aws_instance.bastian_server.id
 }
-/*
+
 output "master_node_public_ip" {
   description = "The Elastic IP associated with the EC2 instance"
   value       = aws_instance.master_node.public_ip
 }
-*/
+
 output "master_node_private_ip" {
   value = aws_instance.master_node.private_ip
 }
@@ -35,12 +35,12 @@ output "master_node_id" {
   description = "The created instance id"
   value       = aws_instance.master_node.id
 }
-/*
+
 output "worker_node_1_public_ip" {
   description = "The Elastic IP associated with the EC2 instance"
   value       = aws_instance.worker_node_1.public_ip
 }
-*/
+
 output "worker_node_1_private_ip" {
   value = aws_instance.worker_node_1.private_ip
 }
@@ -49,12 +49,12 @@ output "worker_node_1_id" {
   description = "The created instance id"
   value       = aws_instance.worker_node_1.id
 }
-/*
+
 output "worker_node_2_public_ip" {
   description = "The Elastic IP associated with the EC2 instance"
   value       = aws_instance.worker_node_2.public_ip
 }
-*/
+
 output "worker_node_2_private_ip" {
   value = aws_instance.worker_node_2.private_ip
 }
