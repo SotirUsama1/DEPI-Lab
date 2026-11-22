@@ -355,11 +355,9 @@
   become: true
   gather_facts: true
   vars:
-    argocd_version: v3.6.2
     argocd_node_port: 30443
     argocd_install_manifest: >-
-      https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version
-      }}/manifests/install.yaml
+      https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   tasks:
     - name: Wait for all cluster nodes to become Ready
       ansible.builtin.command:
@@ -397,7 +395,7 @@
         argocd_namespace.rc != 0 and
         'AlreadyExists' not in argocd_namespace.stderr
 
-    - name: Download the version-matched Argo CD installation manifest
+    - name: Download the stable Argo CD installation manifest
       ansible.builtin.get_url:
         url: "{{ argocd_install_manifest }}"
         dest: /tmp/argocd-install.yaml
@@ -410,6 +408,8 @@
         argv:
           - kubectl
           - apply
+          - --server-side
+          - --force-conflicts
           - --namespace=argocd
           - --filename=/tmp/argocd-install.yaml
       environment:
@@ -417,7 +417,8 @@
       register: argocd_apply
       changed_when: >-
         'created' in argocd_apply.stdout or
-        'configured' in argocd_apply.stdout
+        'configured' in argocd_apply.stdout or
+        'serverside-applied' in argocd_apply.stdout
 
     - name: Expose the Argo CD HTTPS UI on a fixed NodePort
       ansible.builtin.command:
@@ -427,18 +428,18 @@
           - service
           - argocd-server
           - --namespace=argocd
-          - --type=merge
-          - --patch={"spec":{"type":"NodePort","ports":[{"name":"https","port":443,"protocol":"TCP","targetPort":8080,"nodePort":{{ argocd_node_port }}}]}}
+          - --type=strategic
+          - --patch
+          - '{"spec":{"type":"NodePort","ports":[{"port":443,"nodePort":{{ argocd_node_port }}}]}}'
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
       register: argocd_service_patch
       changed_when: "'patched' in argocd_service_patch.stdout"
 
-    - name: Install the matching Argo CD CLI on the control plane
+    - name: Install the latest Argo CD CLI on the control plane
       ansible.builtin.get_url:
         url: >-
-          https://github.com/argoproj/argo-cd/releases/download/{{
-          argocd_version }}/argocd-linux-{{
+          https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-{{
           'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}
         dest: /usr/local/bin/argocd
         owner: root
