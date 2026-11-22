@@ -65,24 +65,18 @@ resource "aws_security_group" "example" {
   }
 
   ingress {
-    from_port = 30080
-    to_port = 30080
-    protocol = "tcp"
+    from_port   = 30080
+    to_port     = 30080
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    from_port = 31659
-    to_port = 31659
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port = 32546
-    to_port = 32546
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "Argo CD HTTPS UI"
+    from_port   = 30443
+    to_port     = 30443
+    protocol    = "tcp"
+    cidr_blocks = ["${trimspace(data.http.my_public_ip.response_body)}/32", "0.0.0.0/0"]
   }
 
   egress {
@@ -101,7 +95,7 @@ resource "aws_instance" "bastian_server" {
 
   vpc_security_group_ids = [aws_security_group.example1.id]
   subnet_id              = module.vpc.public_subnet_ids[0]
-  private_ip                  = "10.0.1.4"
+  private_ip             = "10.0.1.4"
 
   tags = {
     Name = "bastian_server"
@@ -116,7 +110,7 @@ resource "aws_instance" "master_node" {
 
   vpc_security_group_ids = [aws_security_group.example.id]
   subnet_id              = module.vpc.public_subnet_ids[0]
-  private_ip                  = "10.0.1.5"
+  private_ip             = "10.0.1.5"
 
   tags = {
     Name = "master_node"
@@ -128,10 +122,10 @@ resource "aws_instance" "worker_node_1" {
   instance_type               = "t3.small"
   key_name                    = var.ec2_key_name
   associate_public_ip_address = true
-  
+
   vpc_security_group_ids = [aws_security_group.example.id]
   subnet_id              = module.vpc.public_subnet_ids[0]
-  private_ip                  = "10.0.1.6"
+  private_ip             = "10.0.1.6"
 
   tags = {
     Name = "worker_node_1"

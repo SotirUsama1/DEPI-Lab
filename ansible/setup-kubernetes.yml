@@ -252,8 +252,17 @@
     - name: Set the Flannel pod network CIDR
       ansible.builtin.replace:
         path: /tmp/kube-flannel.yml
-        regexp: '10\.244\.0\.0/16'
-        replace: "{{ pod_network_cidr }}"
+        regexp: '"Network": "10\.244\.0\.0/16"'
+        replace: '"Network": "10.1.0.0/16"'
+
+    - name: Verify the Flannel pod network CIDR
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -F
+          - '"Network": "10.1.0.0/16"'
+          - /tmp/kube-flannel.yml
+      changed_when: false
 
     - name: Apply Flannel CNI
       ansible.builtin.command:
@@ -268,6 +277,32 @@
       changed_when: >-
         'created' in flannel_apply.stdout or
         'configured' in flannel_apply.stdout
+
+    - name: Restart Flannel after applying a changed manifest
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - rollout
+          - restart
+          - daemonset/kube-flannel-ds
+          - --namespace=kube-flannel
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: flannel_apply.changed
+      changed_when: true
+
+    - name: Wait for Flannel to become Ready
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - rollout
+          - status
+          - daemonset/kube-flannel-ds
+          - --namespace=kube-flannel
+          - --timeout=5m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
 
     - name: Wait for the control-plane node to become Ready
       ansible.builtin.command:
@@ -314,3 +349,111 @@
           --cri-socket={{ containerd_socket }}
       when: not worker_kubelet_config.stat.exists
       no_log: true
+
+- name: Install Argo CD on the control plane
+  hosts: masters
+  become: true
+  gather_facts: true
+  vars:
+    argocd_version: v3.6.2
+    argocd_node_port: 30443
+    argocd_install_manifest: >-
+      https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version
+      }}/manifests/install.yaml
+  tasks:
+    - name: Wait for all cluster nodes to become Ready
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - wait
+          - --for=condition=Ready
+          - node
+          - --all
+          - --timeout=5m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+
+    - name: Require a supported Argo CD CLI architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+        fail_msg: >-
+          Argo CD CLI installation does not support architecture
+          {{ ansible_facts['architecture'] }} in this playbook.
+
+    - name: Create the Argo CD namespace
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - create
+          - namespace
+          - argocd
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: argocd_namespace
+      changed_when: argocd_namespace.rc == 0
+      failed_when: >-
+        argocd_namespace.rc != 0 and
+        'AlreadyExists' not in argocd_namespace.stderr
+
+    - name: Download the version-matched Argo CD installation manifest
+      ansible.builtin.get_url:
+        url: "{{ argocd_install_manifest }}"
+        dest: /tmp/argocd-install.yaml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Argo CD in the cluster
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - apply
+          - --namespace=argocd
+          - --filename=/tmp/argocd-install.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: argocd_apply
+      changed_when: >-
+        'created' in argocd_apply.stdout or
+        'configured' in argocd_apply.stdout
+
+    - name: Expose the Argo CD HTTPS UI on a fixed NodePort
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - patch
+          - service
+          - argocd-server
+          - --namespace=argocd
+          - --type=merge
+          - --patch={"spec":{"type":"NodePort","ports":[{"name":"https","port":443,"protocol":"TCP","targetPort":8080,"nodePort":{{ argocd_node_port }}}]}}
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: argocd_service_patch
+      changed_when: "'patched' in argocd_service_patch.stdout"
+
+    - name: Install the matching Argo CD CLI on the control plane
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/argoproj/argo-cd/releases/download/{{
+          argocd_version }}/argocd-linux-{{
+          'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}
+        dest: /usr/local/bin/argocd
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Wait for the Argo CD API server to become Available
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - rollout
+          - status
+          - deployment/argocd-server
+          - --namespace=argocd
+          - --timeout=10m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
