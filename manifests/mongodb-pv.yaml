@@ -4,7 +4,7 @@ metadata:
   name: mongo-data-pv
 spec:
   capacity:
-    storage: 1Gi
+    storage: 500Mi
   volumeMode: Filesystem
   accessModes:
     - ReadWriteOnce
@@ -12,12 +12,4 @@ spec:
   storageClassName: ""
   hostPath:
     path: /mnt/mongo-data
-    type: Directory
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - ip-10-0-2-4
+    type: DirectoryOrCreate

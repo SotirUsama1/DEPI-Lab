@@ -24,6 +24,14 @@
           Kubernetes requires at least 2 GiB per machine; resize this EC2
           instance before running the playbook.
 
+    - name: Create the MongoDB hostPath data directory
+      ansible.builtin.file:
+        path: /mnt/mongo-data
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Disable swap for the current boot
       ansible.builtin.command: swapoff -a
       changed_when: false
@@ -240,6 +248,12 @@
         owner: root
         group: root
         mode: "0644"
+
+    - name: Set the Flannel pod network CIDR
+      ansible.builtin.replace:
+        path: /tmp/kube-flannel.yml
+        regexp: '10\.244\.0\.0/16'
+        replace: "{{ pod_network_cidr }}"
 
     - name: Apply Flannel CNI
       ansible.builtin.command:

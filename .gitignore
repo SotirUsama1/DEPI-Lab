@@ -1,2 +1,5 @@
 infra/.terraform*
 infra/modules/S3*
+ansible/inventory.ini
+.gitignore
+ansible/ssh.config

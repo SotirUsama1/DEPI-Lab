@@ -1,0 +1,27 @@
+{{- if .Values.storage.enabled }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongo-data-pv
+spec:
+  capacity:
+    storage: {{ .Values.storage.size }}
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: {{ .Values.storage.reclaimPolicy }}
+  storageClassName: {{ .Values.storage.storageClassName | quote }}
+  hostPath:
+    path: {{ .Values.storage.hostPath }}
+    type: {{ .Values.storage.hostPathType }}
+  {{- if .Values.storage.nodeHostname }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ .Values.storage.nodeHostname | quote }}
+  {{- end }}
+{{- end }}

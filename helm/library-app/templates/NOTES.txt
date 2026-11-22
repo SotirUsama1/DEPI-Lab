@@ -1,0 +1,8 @@
+Library App has been deployed.
+
+Frontend:
+  kubectl port-forward -n {{ .Values.namespace.name }} service/library-frontend 8080:{{ .Values.frontend.service.port }}
+  Then open http://localhost:8080
+
+Or, when using NodePort:
+  minikube service library-frontend -n {{ .Values.namespace.name }} --url

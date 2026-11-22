@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: library-frontend
+  namespace: {{ .Values.namespace.name }}
+spec:
+  type: {{ .Values.frontend.service.type }}
+  selector:
+    app: library-frontend
+  ports:
+    - name: http
+      port: {{ .Values.frontend.service.port }}
+      targetPort: http
+      {{- if eq .Values.frontend.service.type "NodePort" }}
+      nodePort: {{ .Values.frontend.service.nodePort }}
+      {{- end }}

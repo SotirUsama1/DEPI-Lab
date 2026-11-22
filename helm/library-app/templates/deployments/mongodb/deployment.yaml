@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: {{ .Values.namespace.name }}
+spec:
+  replicas: {{ .Values.mongodb.replicaCount }}
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+        - name: mongodb-data-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /data/db && chmod -R u+rwx,g+rwx /data/db
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+      containers:
+        - name: mongodb
+          image: "{{ .Values.images.mongodb.repository }}:{{ .Values.images.mongodb.tag }}"
+          imagePullPolicy: {{ .Values.images.mongodb.pullPolicy }}
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+          ports:
+            - name: mongodb
+              containerPort: {{ .Values.mongodb.containerPort }}
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: mongo-data
+          persistentVolumeClaim:
+            claimName: mongo-data
